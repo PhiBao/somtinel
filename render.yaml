@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: somtinel-agent
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run agent
+    envVars:
+      - key: PRIVATE_KEY
+        sync: false
+      - key: SOMTINEL_RESPONDER_ADDRESS
+        sync: false
+      - key: SOMNIA_RPC_HTTP
+        value: https://api.infra.testnet.somnia.network/
+      - key: SOMNIA_RPC_WS
+        value: wss://api.infra.testnet.somnia.network/ws

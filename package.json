@@ -1,0 +1,34 @@
+{
+  "name": "somnia-somtinel",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent-driven treasury risk response demo for Somnia's Agentic L1 hackathon.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "agent": "tsx scripts/agent.ts",
+    "configure": "tsx scripts/configureSomtinel.ts",
+    "check": "npm run build && forge test"
+  },
+  "dependencies": {
+    "@somnia-chain/reactivity": "0.1.5",
+    "@somnia-chain/streams": "0.12.2",
+    "buffer": "^6.0.3",
+    "dotenv": "16.6.1",
+    "pptxgenjs": "^4.0.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "viem": "2.37.8"
+  },
+  "devDependencies": {
+    "@types/node": "22.10.2",
+    "@types/react": "18.3.12",
+    "@types/react-dom": "18.3.1",
+    "@vitejs/plugin-react": "4.3.4",
+    "tsx": "4.19.2",
+    "typescript": "5.7.3",
+    "vite": "5.4.10"
+  }
+}
