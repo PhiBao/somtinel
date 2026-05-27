@@ -387,6 +387,24 @@ body::after {
   color: var(--signal);
 }
 
+.btn-use-my {
+  border: 1px solid rgba(0, 204, 255, 0.2);
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: rgba(0, 204, 255, 0.06);
+  color: var(--signal-alt);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.btn-use-my:hover {
+  background: rgba(0, 204, 255, 0.15);
+}
+
 .feed-table {
   display: grid;
   gap: 12px;
