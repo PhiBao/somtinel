@@ -296,11 +296,35 @@ export default function App() {
     };
   }, []);
 
+  const switchToSomnia = useCallback(async () => {
+    const ethereum = (window as any).ethereum;
+    if (!ethereum) return false;
+    try {
+      const chainId = await ethereum.request({ method: "eth_chainId" });
+      if (chainId === "0xc488") return true;
+      await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xC488" }] });
+      return true;
+    } catch (e: any) {
+      if (e?.code === 4902) {
+        try {
+          await ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [{ chainId: "0xC488", chainName: "Somnia Shannon", nativeCurrency: { name: "Somnia Test Token", symbol: "STT", decimals: 18 }, rpcUrls: ["https://api.infra.testnet.somnia.network/"], blockExplorerUrls: ["https://shannon-explorer.somnia.network/"] }],
+          });
+          return true;
+        } catch { return false; }
+      }
+      return false;
+    }
+  }, []);
+
   const handleRequest = useCallback(async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const ethereum = (window as any).ethereum;
     if (!ethereum) { setSubmitMessage("No wallet found."); return; }
     try {
+      const switched = await switchToSomnia();
+      if (!switched) { setSubmitMessage("Please switch to Somnia Shannon testnet in your wallet."); return; }
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account) { setSubmitMessage("No account."); return; }
@@ -321,12 +345,14 @@ export default function App() {
       if (error?.code === 4001) setSubmitMessage("Transaction rejected in wallet.");
       else setSubmitMessage(`Failed: ${(error?.shortMessage ?? error?.message ?? "").slice(0, 120)}`);
     }
-  }, [reason, requestAmount, requestDestination, refreshData]);
+  }, [reason, requestAmount, requestDestination, refreshData, switchToSomnia]);
 
   const handleResolve = useCallback(async (incidentId: bigint, approve: boolean) => {
     const ethereum = (window as any).ethereum;
     if (!ethereum) { setResolveMsg("No wallet."); return; }
     try {
+      const switched = await switchToSomnia();
+      if (!switched) { setResolveMsg("Please switch to Somnia Shannon testnet."); return; }
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account || !env.responderAddress) return;
@@ -339,7 +365,7 @@ export default function App() {
       setResolveMsg(`${approve ? "Approved" : "Rejected"} incident #${incidentId.toString()}`);
       setTimeout(() => refreshData(), 4000);
     } catch { setResolveMsg("Resolution failed."); }
-  }, [refreshData]);
+  }, [refreshData, switchToSomnia]);
 
   return (
     <main className="page-shell">
