@@ -397,14 +397,29 @@ export default function App() {
       if (!account) { setSubmitMessage("No account."); return; }
       if (!env.vaultAddress) { setSubmitMessage("Vault address not configured."); return; }
 
+      const publicClient = createPublicClient({ chain: somniaShannon, transport: http(rpc) });
       const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
       const reasonHash = keccak256(stringToHex(reason));
+
+      // estimate gas from RPC (bypasses MetaMask's bad estimate on Somnia)
+      let estimatedGas = 0n;
+      try {
+        estimatedGas = await publicClient.estimateContractGas({
+          account,
+          address: env.vaultAddress,
+          abi: vaultAbi,
+          functionName: "requestWithdrawal",
+          args: [requestDestination as `0x${string}`, BigInt(Math.floor(Number(requestAmount) * 1e18)), reasonHash],
+        });
+      } catch { /* fall through to wallet estimate */ }
+
       const hash = await walletClient.writeContract({
         account,
         address: env.vaultAddress,
         abi: vaultAbi,
         functionName: "requestWithdrawal",
         args: [requestDestination as `0x${string}`, BigInt(Math.floor(Number(requestAmount) * 1e18)), reasonHash],
+        ...(estimatedGas > 0n ? { gas: estimatedGas * 12n / 10n } : {}),
       });
       setSubmitMessage(`Submitted: ${hash}`);
       setTimeout(() => refreshData(), 5000);
@@ -424,10 +439,19 @@ export default function App() {
       const account = accounts?.[0];
       if (!account || !env.responderAddress) return;
 
+      const publicClient = createPublicClient({ chain: somniaShannon, transport: http(rpc) });
       const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
+      let estimatedGas = 0n;
+      try {
+        estimatedGas = await publicClient.estimateContractGas({
+          account, address: env.responderAddress, abi: responderAbi,
+          functionName: "resolveIncident", args: [incidentId, approve],
+        });
+      } catch { /* fall through */ }
       await walletClient.writeContract({
         account, address: env.responderAddress, abi: responderAbi,
         functionName: "resolveIncident", args: [incidentId, approve],
+        ...(estimatedGas > 0n ? { gas: estimatedGas * 12n / 10n } : {}),
       });
       setResolveMsg(`${approve ? "Approved" : "Rejected"} incident #${incidentId.toString()}`);
       setTimeout(() => refreshData(), 4000);
@@ -443,11 +467,20 @@ export default function App() {
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account) return;
+      const publicClient = createPublicClient({ chain: somniaShannon, transport: http(rpc) });
       const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
+      const args = [Number(configCutoff), BigInt(Math.floor(Number(configLimit) * 1e18))] as const;
+      let estimatedGas = 0n;
+      try {
+        estimatedGas = await publicClient.estimateContractGas({
+          account, address: env.responderAddress, abi: responderAbi,
+          functionName: "setRiskConfig", args: [...args],
+        });
+      } catch { /* fall through */ }
       await walletClient.writeContract({
         account, address: env.responderAddress, abi: responderAbi,
-        functionName: "setRiskConfig",
-        args: [Number(configCutoff), BigInt(Math.floor(Number(configLimit) * 1e18))],
+        functionName: "setRiskConfig", args: [...args],
+        ...(estimatedGas > 0n ? { gas: estimatedGas * 12n / 10n } : {}),
       });
       setConfigMsg(`Risk config updated: cutoff=${configCutoff}, limit=${configLimit} STT`);
       setTimeout(() => refreshData(), 3000);
@@ -463,11 +496,20 @@ export default function App() {
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account) return;
+      const publicClient = createPublicClient({ chain: somniaShannon, transport: http(rpc) });
       const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
+      const args = [configDest as `0x${string}`, BigInt(Math.floor(Number(configDestLimit) * 1e18))] as const;
+      let estimatedGas = 0n;
+      try {
+        estimatedGas = await publicClient.estimateContractGas({
+          account, address: env.responderAddress, abi: responderAbi,
+          functionName: "setDestinationLimit", args: [...args],
+        });
+      } catch { /* fall through */ }
       await walletClient.writeContract({
         account, address: env.responderAddress, abi: responderAbi,
-        functionName: "setDestinationLimit",
-        args: [configDest as `0x${string}`, BigInt(Math.floor(Number(configDestLimit) * 1e18))],
+        functionName: "setDestinationLimit", args: [...args],
+        ...(estimatedGas > 0n ? { gas: estimatedGas * 12n / 10n } : {}),
       });
       setConfigMsg(`Destination limit set: ${shorten(configDest)} = ${configDestLimit} STT`);
       setTimeout(() => refreshData(), 3000);
