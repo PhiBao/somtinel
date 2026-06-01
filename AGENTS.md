@@ -7,7 +7,7 @@ This repo is a Somnia hackathon MVP called **Somtinel**. It demonstrates an agen
 Problem:
 
 - Crypto treasury operations are too manual for machine-speed environments.
-- Existing automation is often off-chain, opaque, and difficult for other agents to inspect.
+- Existing automation is often offchain, opaque, and difficult for other agents to inspect.
 - Teams need a path where safe actions execute autonomously while suspicious actions are quarantined and escalated.
 
 Target users:
@@ -15,15 +15,15 @@ Target users:
 - DAO treasury operators
 - protocol foundations and ecosystem funds
 - game economy operators
-- market makers and on-chain ops teams
+- market makers and onchain ops teams
 
 Core behavior:
 
 - Treasury operator calls `TreasuryVault.requestWithdrawal()`.
-- Somnia on-chain Reactivity watches the `WithdrawalRequested` event.
+- Somnia onchain Reactivity watches the `WithdrawalRequested` event.
 - `SomtinelResponder` auto-executes trusted low-value withdrawals.
-- Risky withdrawals become on-chain incidents.
-- An off-chain agent watches incidents via WebSocket, reads incident state atomically, and publishes typed diagnostics to Somnia Data Streams.
+- Risky withdrawals become onchain incidents.
+- An offchain agent watches incidents via WebSocket, reads incident state atomically, and publishes typed diagnostics to Somnia Data Streams.
 - The React dashboard surfaces incidents, request submission, resolve actions, and the agent memory feed.
 
 ## Somnia Testnet Constants
@@ -43,8 +43,8 @@ Core behavior:
 - `src/interfaces/ITreasuryVault.sol` — responder-facing vault interface
 - `vendor/@somnia-chain/reactivity-contracts` — vendored Somnia reactivity contract interfaces
 - `test/SomtinelResponder.t.sol` — 6 Foundry tests (auto-execute, incident, escalation, resolve)
-- `scripts/agent.ts` — off-chain agent: WebSocket watch + Streams publish
-- `scripts/configureSomtinel.ts` — on-chain setup: trusted dest, responder, subscription
+- `scripts/agent.ts` — offchain agent: WebSocket watch + Streams publish
+- `scripts/configureSomtinel.ts` — onchain setup: trusted dest, responder, subscription
 - `scripts/generateDeck.ts` — PPTX slide deck generator
 - `shared/somtinel.ts` — shared constants, ABIs, schema, chain config
 - `app/src/App.tsx` — Vite/React dashboard (live mode, no demo fallback)
@@ -59,8 +59,8 @@ Core behavior:
 npm install                    # dependencies
 npm run dev                    # Vite dev server at :5173
 npm run build                  # tsc + vite build
-npm run agent                  # off-chain agent
-npm run configure              # on-chain setup script
+npm run agent                  # offchain agent
+npm run configure              # onchain setup script
 npm run check                  # build + forge test
 npm run deck                   # generate somtinel-deck.pptx
 forge test                     # 6/6 Solidity tests
@@ -140,8 +140,8 @@ Vercel cannot run the agent because it's a long-lived WebSocket process (serverl
 | tsc --noEmit | clean |
 | vite build | passes |
 | npm run check | all green |
-| On-chain auto-execute | verified |
-| On-chain incident creation | verified |
-| On-chain resolve (approve/reject) | verified |
-| Off-chain agent | WebSocket watching, Streams publishing |
+| Onchain auto-execute | verified |
+| Onchain incident creation | verified |
+| Onchain resolve (approve/reject) | verified |
+| Offchain agent | WebSocket watching, Streams publishing |
 | Frontend live mode | connected to Shannon |

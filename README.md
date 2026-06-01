@@ -2,7 +2,7 @@
 
 Agent-driven treasury risk response built on Somnia Reactivity, Data Streams, and the Model Context Protocol.
 
-- On-chain reactivity for same-block autonomous execution
+- Onchain reactivity for same-block autonomous execution
 - Configurable risk engine with per-destination limits
 - Somnia Data Streams for typed, composable agent memory
 - MCP server for AI-native treasury operations (Cursor, Claude Desktop)
@@ -13,10 +13,10 @@ Agent-driven treasury risk response built on Somnia Reactivity, Data Streams, an
 Crypto treasuries still live in a bad middle ground:
 
 - Multisig flows are too manual to react at machine speed
-- Automation is often brittle, opaque, or off-chain only
+- Automation is often brittle, opaque, or offchain only
 - Risk engines rarely leave verifiable, structured state that other agents can consume
 
-Somtinel turns a treasury withdrawal into an agent-native flow. Trusted payouts auto-settle. Suspicious ones open on-chain incidents. An off-chain agent enriches them with typed diagnostics. AI agents can query and act via MCP.
+Somtinel turns a treasury withdrawal into an agent-native flow. Trusted payouts auto-settle. Suspicious ones open onchain incidents. An offchain agent enriches them with typed diagnostics. AI agents can query and act via MCP.
 
 ## Product Thesis
 
@@ -25,7 +25,7 @@ Somtinel turns a treasury withdrawal into an agent-native flow. Trusted payouts 
 - DAO treasury operators
 - protocol foundations and ecosystem funds
 - game economies with automated payouts
-- exchanges, market makers, and on-chain ops teams that want machine-speed guardrails
+- exchanges, market makers, and onchain ops teams that want machine-speed guardrails
 
 ### Core pain points
 
@@ -57,8 +57,8 @@ Operator → TreasuryVault.requestWithdrawal()
          → WithdrawalRequested event
          → SomtinelResponder fires in-chain (0x0100 precompile)
            • Trusted + under limit → auto-execute
-           • Risky → open incident on-chain
-         → Off-chain agent watches IncidentOpened
+           • Risky → open incident onchain
+         → Offchain agent watches IncidentOpened
          → Agent publishes typed digest to Somnia Data Streams
          → Dashboard reads chain state + stream memory
          → MCP server exposes tools to AI agents
@@ -71,7 +71,7 @@ npm install
 npm run dev          # dashboard at localhost:5173
 forge test           # 9/9 Solidity tests
 npm run build        # tsc + vite build
-npm run agent        # off-chain agent (WebSocket → Streams)
+npm run agent        # offchain agent (WebSocket → Streams)
 npm run mcp          # MCP server (AI agent tools)
 npm run check        # build + forge test
 ```
@@ -94,7 +94,7 @@ npm run check        # build + forge test
 - 12-second auto-polling + WebSocket live push
 - Auto chain switching (prompts MetaMask to switch to Somnia)
 
-### Off-chain Agent
+### Offchain Agent
 - Watches `IncidentOpened` events via WebSocket
 - Atomically fetches incident state with `eth_call` simulation
 - Contextual enrichment: repeat destination detection, burst activity flags, large amount warnings

@@ -749,7 +749,7 @@ export default function App() {
         <div className="feed-table">
           {streamRows.length === 0 && (
             <p className="muted" style={{ textAlign: "center", padding: 24 }}>
-              {connected ? "No stream records yet. Run the off-chain agent to populate." : "Loading…"}
+              {connected ? "No stream records yet. Run the offchain agent to populate." : "Loading…"}
             </p>
           )}
           {streamRows.map((row) => (
@@ -844,7 +844,7 @@ export default function App() {
       <section className="footnote-grid">
         <article className="panel mini">
           <p className="eyebrow">TAM / SAM / SOM</p>
-          <p>Initial SOM is treasury automation for on-chain teams already using bots or ops dashboards. Expandable into payout orchestration, game economies, agent settlement, and compliance-aware treasury rails.</p>
+          <p>Initial SOM is treasury automation for onchain teams already using bots or ops dashboards. Expandable into payout orchestration, game economies, agent settlement, and compliance-aware treasury rails.</p>
         </article>
         <article className="panel mini">
           <p className="eyebrow">Attack Surface</p>
@@ -854,7 +854,7 @@ export default function App() {
           <p className="eyebrow">How it works</p>
           <p>
             Request a withdrawal from the form. Somnia's reactivity precompile fires a handler in the same block.
-            Safe payouts settle instantly. Risky ones are quarantined as on-chain incidents with risk scores
+            Safe payouts settle instantly. Risky ones are quarantined as onchain incidents with risk scores
             and review deadlines. Everything is verifiable, composable, and machine-readable.
           </p>
         </article>
