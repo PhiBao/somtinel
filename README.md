@@ -136,12 +136,17 @@ vercel --prod
 ```
 `vercel.json` is pre-configured. Vite builds to `dist/`.
 
-### Agent (Render/Railway)
-Vercel cannot run the agent (10s function timeout on serverless). Use a persistent service:
+### Agent (Render — Background Worker)
 
-**Render**: New Web Service, start command `npm run agent`, add env vars.
-**Railway**: Push repo, set start command and env vars.
-**Local**: `npm run agent` in a terminal.
+The agent is a WebSocket client, not an HTTP server — it doesn't bind a port. Render requires a **Background Worker** (not a Web Service):
+
+1. New Background Worker → connect repo
+2. Build command: `npm install`
+3. Start command: `npm run agent`
+4. Add env vars: `PRIVATE_KEY`, `SOMTINEL_RESPONDER_ADDRESS`, `SOMNIA_RPC_HTTP`, `SOMNIA_RPC_WS`
+5. Deploy — the agent stays running and publishes to Streams
+
+The `render.yaml` is pre-configured with `type: worker`.
 
 ### MCP Server (Cursor)
 Pre-configured in `.cursor/mcp.json`. Cursor auto-discovers it. For Claude Desktop, add to `claude_desktop_config.json`.

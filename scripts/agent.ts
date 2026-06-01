@@ -239,6 +239,13 @@ async function main() {
   console.log(`[agent] watching ${responderAddress} on ${rpcWs}`);
 }
 
+// tiny health-check server for Render free tier (Web Service needs a port)
+import { createServer } from "node:http";
+const PORT = parseInt(process.env.PORT || "10000", 10);
+createServer((_req, res) => { res.writeHead(200); res.end("OK"); }).listen(PORT, () => {
+  console.log(`[agent] health server on port ${PORT}`);
+});
+
 main().catch((error) => {
   console.error(error);
   process.exit(1);
