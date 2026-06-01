@@ -170,4 +170,62 @@ contract SomtinelResponderTest is Test {
         assertEq(subscriptionId, 1);
         assertEq(responder.withdrawalSubscriptionId(), 1);
     }
+
+    function testConfigurableRiskThresholds() external {
+        // lower the trusted limit to 1 ether
+        vm.prank(owner);
+        responder.setRiskConfig(50, 1 ether);
+
+        // 2 ether to safe dest should now be blocked (was auto-executable at 5 ether default)
+        (uint8 score, bool trusted, bool autoExecute) = responder.previewRisk(safeDestination, 2 ether);
+        assertTrue(trusted);
+        assertEq(score, 58);
+        assertFalse(autoExecute);
+
+        // raise cutoff, 0.5 ether to unknown should still be incident
+        (score, trusted, autoExecute) = responder.previewRisk(riskyDestination, 0.5 ether);
+        assertFalse(trusted);
+        assertEq(score, 44);
+        assertFalse(autoExecute);
+    }
+
+    function testPerDestinationLimit() external {
+        // set a custom limit for safeDestination
+        vm.prank(owner);
+        responder.setDestinationLimit(safeDestination, 8 ether);
+
+        // 7 ether should now auto-execute (vs 5 ether default)
+        (uint8 score, bool trusted, bool autoExecute) = responder.previewRisk(safeDestination, 7 ether);
+        assertTrue(trusted);
+        assertEq(score, 12);
+        assertTrue(autoExecute);
+
+        // other destinations still use default 5 ether
+        address otherSafe = makeAddr("otherSafe");
+        vm.prank(owner);
+        responder.setTrustedDestination(otherSafe, true);
+        (score, trusted, autoExecute) = responder.previewRisk(otherSafe, 7 ether);
+        assertTrue(trusted);
+        assertEq(score, 58);
+        assertFalse(autoExecute);
+    }
+
+    function testAutoExecutesWithCustomLimit() external {
+        vm.prank(owner);
+        responder.setDestinationLimit(safeDestination, 10 ether);
+
+        vm.prank(operator);
+        uint256 requestId = vault.requestWithdrawal(safeDestination, 8 ether, reasonHash);
+
+        bytes32[] memory topics = new bytes32[](3);
+        topics[0] = WITHDRAWAL_TOPIC;
+        topics[1] = bytes32(requestId);
+        topics[2] = reasonHash;
+
+        vm.prank(address(0x0100));
+        responder.onEvent(address(vault), topics, abi.encode(safeDestination, 8 ether, operator));
+
+        (, , , , , bool executed, ) = vault.getRequestView(requestId);
+        assertTrue(executed);
+    }
 }

@@ -35,8 +35,6 @@ contract SomtinelResponder is SomniaEventHandler {
     error InvalidIncident();
     error InvalidStatus();
 
-    uint8 public constant LOW_RISK_CUTOFF = 34;
-    uint256 public constant TRUSTED_DESTINATION_LIMIT = 5 ether;
     uint256 public constant REVIEW_WINDOW_MS = 15 minutes * 1000;
     bytes32 public constant WITHDRAWAL_REQUESTED_TOPIC =
         keccak256("WithdrawalRequested(uint256,address,uint256,bytes32,address)");
@@ -51,11 +49,18 @@ contract SomtinelResponder is SomniaEventHandler {
     uint256 public withdrawalSubscriptionId;
     uint256 public nextIncidentId = 1;
 
+    /// @notice Configurable risk parameters
+    uint8 public riskCutoff = 34;
+    uint256 public defaultTrustedLimit = 5 ether;
+
     mapping(address => bool) public trustedDestinations;
+    mapping(address => uint256) public destinationLimits;
     mapping(uint256 => Incident) private incidents;
     mapping(uint64 => uint256) private incidentIdByDeadlineMs;
 
     event TrustedDestinationUpdated(address indexed destination, bool isTrusted);
+    event DestinationLimitUpdated(address indexed destination, uint256 limit);
+    event RiskConfigUpdated(uint8 riskCutoff, uint256 defaultTrustedLimit);
     event WithdrawalSubscriptionCreated(uint256 indexed subscriptionId);
     event IncidentOpened(
         uint256 indexed incidentId,
@@ -84,6 +89,17 @@ contract SomtinelResponder is SomniaEventHandler {
     }
 
     receive() external payable {}
+
+    function setRiskConfig(uint8 newCutoff, uint256 newDefaultLimit) external onlyOwner {
+        riskCutoff = newCutoff;
+        defaultTrustedLimit = newDefaultLimit;
+        emit RiskConfigUpdated(newCutoff, newDefaultLimit);
+    }
+
+    function setDestinationLimit(address destination, uint256 limit) external onlyOwner {
+        destinationLimits[destination] = limit;
+        emit DestinationLimitUpdated(destination, limit);
+    }
 
     function setTrustedDestination(address destination, bool isTrusted) external onlyOwner {
         trustedDestinations[destination] = isTrusted;
@@ -267,16 +283,18 @@ contract SomtinelResponder is SomniaEventHandler {
         returns (uint8 score, bool trusted, bool autoExecute)
     {
         trusted = trustedDestinations[destination];
+        uint256 limit = destinationLimits[destination] != 0 ? destinationLimits[destination] : defaultTrustedLimit;
 
-        if (trusted && amount <= TRUSTED_DESTINATION_LIMIT) {
+        if (trusted && amount <= limit) {
             return (12, true, true);
         }
 
-        if (trusted) {
+        if (trusted && limit > 0 && amount > limit) {
             return (58, true, false);
         }
 
-        if (amount <= 1 ether) {
+        uint256 untrustedThreshold = 1 ether;
+        if (amount <= untrustedThreshold) {
             return (44, false, false);
         }
 

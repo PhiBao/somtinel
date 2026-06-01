@@ -185,7 +185,58 @@ export default function App() {
   const [submitMessage, setSubmitMessage] = useState("");
   const [resolveMsg, setResolveMsg] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [riskPreview, setRiskPreview] = useState<{ score: number; trusted: boolean; autoExecute: boolean } | null>(null);
+  const [configCutoff, setConfigCutoff] = useState("34");
+  const [configLimit, setConfigLimit] = useState("5");
+  const [configDest, setConfigDest] = useState("");
+  const [configDestLimit, setConfigDestLimit] = useState("");
+  const [configMsg, setConfigMsg] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+  const [mcpTool, setMcpTool] = useState("listIncidents");
+  const [mcpParam, setMcpParam] = useState("");
+  const [mcpResult, setMcpResult] = useState("");
+  const [mcpLoading, setMcpLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval>>();
+
+  // check if connected wallet is the contract owner
+  useEffect(() => {
+    if (!connected || !env.responderAddress) return;
+    (async () => {
+      try {
+        const ethereum = (window as any).ethereum;
+        if (!ethereum) return;
+        const accounts = await ethereum.request({ method: "eth_accounts" }) as `0x${string}`[];
+        const walletAddr = accounts?.[0];
+        if (!walletAddr) return;
+        const rpcUrl = env.rpcHttp ?? "https://api.infra.testnet.somnia.network/";
+        const client = createPublicClient({ chain: somniaShannon, transport: http(rpcUrl) });
+        const ownerAddr = await client.readContract({
+          address: env.responderAddress as `0x${string}`, abi: responderAbi, functionName: "owner",
+        });
+        setIsOwner(String(ownerAddr).toLowerCase() === walletAddr.toLowerCase());
+      } catch { setIsOwner(false); }
+    })();
+  }, [connected]);
+
+  // debounced risk preview
+  useEffect(() => {
+    if (!requestDestination || !requestAmount) { setRiskPreview(null); return; }
+    const rpcUrl = env.rpcHttp ?? "https://api.infra.testnet.somnia.network/";
+    const timer = setTimeout(async () => {
+      try {
+        if (!env.responderAddress) return;
+        const client = createPublicClient({ chain: somniaShannon, transport: http(rpcUrl) });
+        const [score, trusted, autoExecute] = await client.readContract({
+          address: env.responderAddress,
+          abi: responderAbi,
+          functionName: "previewRisk",
+          args: [requestDestination as `0x${string}`, BigInt(Math.floor(Number(requestAmount || "0") * 1e18))],
+        });
+        setRiskPreview({ score: Number(score), trusted, autoExecute });
+      } catch { setRiskPreview(null); }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [requestDestination, requestAmount]);
 
   const rpc = env.rpcHttp ?? "https://api.infra.testnet.somnia.network/";
 
@@ -298,23 +349,32 @@ export default function App() {
 
   const switchToSomnia = useCallback(async () => {
     const ethereum = (window as any).ethereum;
-    if (!ethereum) return false;
+    if (!ethereum) return { ok: false as const, code: "no_wallet" as const };
     try {
       const chainId = await ethereum.request({ method: "eth_chainId" });
-      if (chainId === "0xc488") return true;
+      if (chainId === "0xc488") return { ok: true as const, code: "ok" as const };
+    } catch { /* proceed to add/switch */ }
+
+    try {
       await ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0xC488" }] });
-      return true;
+      return { ok: true as const, code: "ok" as const };
     } catch (e: any) {
-      if (e?.code === 4902) {
-        try {
-          await ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: [{ chainId: "0xC488", chainName: "Somnia Shannon", nativeCurrency: { name: "Somnia Test Token", symbol: "STT", decimals: 18 }, rpcUrls: ["https://api.infra.testnet.somnia.network/"], blockExplorerUrls: ["https://shannon-explorer.somnia.network/"] }],
-          });
-          return true;
-        } catch { return false; }
+      if (e?.code === 4001) return { ok: false as const, code: "rejected" as const };
+      // code 4902 = chain not added, or other errors
+      try {
+        await ethereum.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: "0xC488", chainName: "Somnia Shannon Testnet",
+            nativeCurrency: { name: "Somnia Test Token", symbol: "STT", decimals: 18 },
+            rpcUrls: ["https://api.infra.testnet.somnia.network/"],
+            blockExplorerUrls: ["https://shannon-explorer.somnia.network/"],
+          }],
+        });
+        return { ok: true as const, code: "ok" as const };
+      } catch (e2: any) {
+        return { ok: false as const, code: e2?.code === 4001 ? "rejected" as const : "unknown" as const };
       }
-      return false;
     }
   }, []);
 
@@ -324,7 +384,14 @@ export default function App() {
     if (!ethereum) { setSubmitMessage("No wallet found."); return; }
     try {
       const switched = await switchToSomnia();
-      if (!switched) { setSubmitMessage("Please switch to Somnia Shannon testnet in your wallet."); return; }
+      if (!switched.ok) {
+        setSubmitMessage(
+          switched.code === "rejected"
+            ? "Switch rejected. Click Submit again to retry — MetaMask will prompt you to add/switch to Somnia Shannon."
+            : "No wallet found. Install MetaMask or Rabby."
+        );
+        return;
+      }
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account) { setSubmitMessage("No account."); return; }
@@ -352,7 +419,7 @@ export default function App() {
     if (!ethereum) { setResolveMsg("No wallet."); return; }
     try {
       const switched = await switchToSomnia();
-      if (!switched) { setResolveMsg("Please switch to Somnia Shannon testnet."); return; }
+      if (!switched.ok) { setResolveMsg("Switch to Somnia Shannon first. Click again — MetaMask will prompt you."); return; }
       const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
       const account = accounts?.[0];
       if (!account || !env.responderAddress) return;
@@ -366,6 +433,110 @@ export default function App() {
       setTimeout(() => refreshData(), 4000);
     } catch { setResolveMsg("Resolution failed."); }
   }, [refreshData, switchToSomnia]);
+
+  const handleSetRiskConfig = useCallback(async () => {
+    const ethereum = (window as any).ethereum;
+    if (!ethereum || !env.responderAddress) return;
+    try {
+      const switched = await switchToSomnia();
+      if (!switched.ok) { setConfigMsg("Switch to Somnia Shannon first. Click again — MetaMask will prompt you."); return; }
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
+      const account = accounts?.[0];
+      if (!account) return;
+      const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
+      await walletClient.writeContract({
+        account, address: env.responderAddress, abi: responderAbi,
+        functionName: "setRiskConfig",
+        args: [Number(configCutoff), BigInt(Math.floor(Number(configLimit) * 1e18))],
+      });
+      setConfigMsg(`Risk config updated: cutoff=${configCutoff}, limit=${configLimit} STT`);
+      setTimeout(() => refreshData(), 3000);
+    } catch { setConfigMsg("Config update failed."); }
+  }, [configCutoff, configLimit, refreshData, switchToSomnia]);
+
+  const handleSetDestLimit = useCallback(async () => {
+    const ethereum = (window as any).ethereum;
+    if (!ethereum || !env.responderAddress || !configDest) return;
+    try {
+      const switched = await switchToSomnia();
+      if (!switched.ok) { setConfigMsg("Switch to Somnia Shannon first. Click again — MetaMask will prompt you."); return; }
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" }) as `0x${string}`[];
+      const account = accounts?.[0];
+      if (!account) return;
+      const walletClient = createWalletClient({ chain: somniaShannon, transport: custom(ethereum) });
+      await walletClient.writeContract({
+        account, address: env.responderAddress, abi: responderAbi,
+        functionName: "setDestinationLimit",
+        args: [configDest as `0x${string}`, BigInt(Math.floor(Number(configDestLimit) * 1e18))],
+      });
+      setConfigMsg(`Destination limit set: ${shorten(configDest)} = ${configDestLimit} STT`);
+      setTimeout(() => refreshData(), 3000);
+    } catch { setConfigMsg("Destination limit update failed."); }
+  }, [configDest, configDestLimit, refreshData, switchToSomnia]);
+
+  const handleMcpExecute = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpResult("");
+    try {
+      const client = createPublicClient({ chain: somniaShannon, transport: http(rpc) });
+      let text = "";
+      switch (mcpTool) {
+        case "listIncidents": {
+          if (!env.responderAddress) { text = "Responder not configured."; break; }
+          const nextId = await client.readContract({
+            address: env.responderAddress, abi: responderAbi, functionName: "nextIncidentId",
+          });
+          const incidents = [];
+          for (let i = 1n; i < nextId && i < 10n; i++) {
+            const row = await client.readContract({
+              address: env.responderAddress, abi: responderAbi, functionName: "getIncidentView", args: [i],
+            });
+            incidents.push({ incidentId: Number(i), requestId: Number(row[0]), destination: row[1], amount: formatEther(row[2]) + " STT", riskScore: Number(row[6]), status: incidentStatusLabel(Number(row[7])), trusted: row[8] });
+          }
+          text = JSON.stringify(incidents, null, 2);
+          break;
+        }
+        case "getIncident": {
+          if (!env.responderAddress || !mcpParam) { text = "Responder not configured or no ID."; break; }
+          const row = await client.readContract({
+            address: env.responderAddress, abi: responderAbi, functionName: "getIncidentView", args: [BigInt(mcpParam)],
+          });
+          text = JSON.stringify({ incidentId: mcpParam, requestId: Number(row[0]), destination: row[1], amount: formatEther(row[2]) + " STT", riskScore: Number(row[6]), status: incidentStatusLabel(Number(row[7])), trusted: row[8] }, null, 2);
+          break;
+        }
+        case "getVaultBalance": {
+          if (!env.vaultAddress) { text = "Vault not configured."; break; }
+          const bal = await client.getBalance({ address: env.vaultAddress as `0x${string}` });
+          text = formatEther(bal) + " STT";
+          break;
+        }
+        case "previewRisk": {
+          if (!env.responderAddress || !mcpParam) { text = "Responder not configured."; break; }
+          const parts = mcpParam.split(",");
+          const dest = (parts[0]?.trim() || "0x") as `0x${string}`;
+          const amt = BigInt(Math.floor(Number(parts[1]?.trim() || "0") * 1e18));
+          const [score, trusted, autoExecute] = await client.readContract({
+            address: env.responderAddress, abi: responderAbi, functionName: "previewRisk", args: [dest, amt],
+          });
+          text = JSON.stringify({ riskScore: Number(score), trusted, autoExecute: autoExecute ? "yes — auto-execute" : "no — incident" }, null, 2);
+          break;
+        }
+        case "getRiskConfig": {
+          if (!env.responderAddress) { text = "Responder not configured."; break; }
+          const cutoff = await client.readContract({ address: env.responderAddress, abi: responderAbi, functionName: "riskCutoff" });
+          const defLimit = await client.readContract({ address: env.responderAddress, abi: responderAbi, functionName: "defaultTrustedLimit" });
+          text = JSON.stringify({ riskCutoff: Number(cutoff), defaultTrustedLimit: formatEther(defLimit) + " STT" }, null, 2);
+          break;
+        }
+        default:
+          text = `Unknown tool: ${mcpTool}`;
+      }
+      setMcpResult(text);
+    } catch (e: any) {
+      setMcpResult(`Error: ${e?.shortMessage ?? e?.message ?? e}`);
+    }
+    setMcpLoading(false);
+  }, [mcpTool, mcpParam, rpc]);
 
   return (
     <main className="page-shell">
@@ -462,6 +633,14 @@ export default function App() {
             <label>
               Amount (STT)
               <input value={requestAmount} onChange={(e) => setRequestAmount(e.target.value)} />
+              {riskPreview && (
+                <div className={`risk-preview ${riskPreview.autoExecute ? "risk-safe" : "risk-incident"}`}>
+                  {riskPreview.autoExecute
+                    ? `Auto-execute · Risk ${riskPreview.score} · Trusted`
+                    : `Will create incident · Risk ${riskPreview.score} · ${riskPreview.trusted ? "Trusted" : "Untrusted"}`
+                  }
+                </div>
+              )}
             </label>
             <label>
               Reason
@@ -472,6 +651,43 @@ export default function App() {
           </form>
         </article>
       </section>
+
+      {isOwner && (
+      <section className="panel config-panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">Owner Config</p>
+            <h2>Risk engine parameters</h2>
+          </div>
+          <p className="muted">Only the treasury owner can modify. Current defaults: cutoff={configCutoff}, limit={configLimit} STT.</p>
+        </div>
+        <div className="config-grid">
+          <div className="config-group">
+            <label>Risk Cutoff (0-255)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input type="number" value={configCutoff} onChange={(e) => setConfigCutoff(e.target.value)} min="0" max="255" />
+              <button type="button" className="btn-config" onClick={handleSetRiskConfig}>Save</button>
+            </div>
+          </div>
+          <div className="config-group">
+            <label>Default Trusted Limit (STT)</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input type="number" value={configLimit} onChange={(e) => setConfigLimit(e.target.value)} min="0" step="0.1" />
+              <button type="button" className="btn-config" onClick={handleSetRiskConfig}>Save</button>
+            </div>
+          </div>
+          <div className="config-group" style={{ gridColumn: "span 2" }}>
+            <label>Per-Destination Limit</label>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input placeholder="0x..." value={configDest} onChange={(e) => setConfigDest(e.target.value)} style={{ flex: 1 }} />
+              <input type="number" placeholder="STT" value={configDestLimit} onChange={(e) => setConfigDestLimit(e.target.value)} min="0" step="0.1" style={{ width: 100 }} />
+              <button type="button" className="btn-config" onClick={handleSetDestLimit}>Set</button>
+            </div>
+          </div>
+        </div>
+        {configMsg && <p className="muted" style={{ marginTop: 10 }}>{configMsg}</p>}
+      </section>
+      )}
 
       <section className="panel feed-panel">
         <div className="panel-head">
@@ -509,6 +725,76 @@ export default function App() {
               </div>
               <p className="muted">{row.recommendedAction}</p>
             </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel mcp-panel">
+        <div className="panel-head">
+          <div>
+            <p className="eyebrow">MCP Server</p>
+            <h2>AI-native treasury operations</h2>
+          </div>
+          <p className="muted">Let AI agents query and act on Somtinel directly via the Model Context Protocol.</p>
+        </div>
+
+        <div className="mcp-grid">
+          <div className="mcp-card">
+            <p className="eyebrow">Start server</p>
+            <pre className="mcp-code">npm run mcp</pre>
+            <p className="muted">Runs a stdio MCP server exposing 6 tools. No network server needed — works over pipes.</p>
+          </div>
+          <div className="mcp-card">
+            <p className="eyebrow">Cursor config</p>
+            <pre className="mcp-code">{`.cursor/mcp.json\n{\n  "mcpServers": {\n    "somtinel": {\n      "command": "npx",\n      "args": ["tsx", "scripts/mcp-server.ts"]\n    }\n  }\n}`}</pre>
+            <p className="muted">Already in repo. Cursor auto-discovers it.</p>
+          </div>
+          <div className="mcp-card">
+            <p className="eyebrow">Claude Desktop</p>
+            <pre className="mcp-code">claude_desktop_config.json{"\n"}{`{\n  "mcpServers": {\n    "somtinel": {\n      "command": "npx",\n      "args": ["tsx",\n        "scripts/mcp-server.ts"]\n    }\n  }\n}`}</pre>
+            <p className="muted">Add to {"~"}/Library/Application Support/Claude/</p>
+          </div>
+        </div>
+
+        <p className="eyebrow" style={{ marginTop: 20, marginBottom: 10 }}>Try a tool</p>
+        <div className="mcp-try">
+          <select className="mcp-select" value={mcpTool} onChange={(e) => { setMcpTool(e.target.value); setMcpResult(""); }}>
+            <option value="listIncidents">listIncidents</option>
+            <option value="getIncident">getIncident</option>
+            <option value="getVaultBalance">getVaultBalance</option>
+            <option value="previewRisk">previewRisk</option>
+            <option value="getRiskConfig">getRiskConfig</option>
+          </select>
+          {(mcpTool === "getIncident" || mcpTool === "previewRisk") && (
+            <input
+              className="mcp-input"
+              placeholder={mcpTool === "previewRisk" ? "0x..., amount" : "incident ID"}
+              value={mcpParam}
+              onChange={(e) => setMcpParam(e.target.value)}
+            />
+          )}
+          <button className="btn-config" onClick={handleMcpExecute} disabled={mcpLoading}>
+            {mcpLoading ? "…" : "Run"}
+          </button>
+        </div>
+        {mcpResult && (
+          <pre className="mcp-result">{mcpResult}</pre>
+        )}
+
+        <p className="eyebrow" style={{ marginTop: 20, marginBottom: 10 }}>Available tools</p>
+        <div className="mcp-tools">
+          {[
+            ["listIncidents", "List all incidents with risk scores, statuses, destinations"],
+            ["getIncident", "Get full detail for a specific incident by ID"],
+            ["getVaultBalance", "Read current vault STT balance"],
+            ["previewRisk", "Preview risk score for a destination + amount pair"],
+            ["resolveIncident", "Approve or reject an incident (requires owner wallet)"],
+            ["getRiskConfig", "Read current risk cutoff and default trusted limit"],
+          ].map(([name, desc]) => (
+            <div className="mcp-tool" key={name}>
+              <span className="mcp-tool-name">{name}</span>
+              <span className="muted">{desc}</span>
+            </div>
           ))}
         </div>
       </section>

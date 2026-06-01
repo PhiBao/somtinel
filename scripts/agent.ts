@@ -4,6 +4,7 @@ import {
   createPublicClient,
   createWalletClient,
   decodeAbiParameters,
+  formatEther,
   http,
   parseAbiParameters,
   toHex,
@@ -65,6 +66,52 @@ const streamsSdk = new StreamsSDK({
 
 const encoder = new SchemaEncoder(SOMTINEL_STREAM_SCHEMA);
 
+// rolling window for contextual analysis
+const recentIncidents: Array<{ destination: string; riskScore: number; timestamp: number }> = [];
+const MAX_HISTORY = 50;
+
+function makeSummary(riskScore: number, trusted: boolean, amount: bigint, destination: string) {
+  const ethAmount = Number(formatEther(amount));
+
+  // count recent incidents for same destination
+  const sameDest = recentIncidents.filter((r) => r.destination.toLowerCase() === destination.toLowerCase());
+  const sameDestCount = sameDest.length;
+
+  // check burst activity
+  const recent5min = recentIncidents.filter((r) => Date.now() - r.timestamp < 300_000);
+  const burstFlag = recent5min.length >= 3 ? ` • ${recent5min.length} incidents in last 5min` : "";
+
+  // high-value flag
+  const highValue = ethAmount >= 1 ? ` • large amount (${ethAmount.toFixed(2)} STT)` : "";
+
+  let summary = "";
+  if (riskScore >= 80) {
+    summary = `High risk withdrawal${highValue} to ${trusted ? "trusted" : "unknown"} destination`;
+  } else if (riskScore >= 50) {
+    summary = `Elevated risk withdrawal exceeds trusted low-limit lane${highValue}`;
+  } else {
+    summary = `Low risk withdrawal (${ethAmount.toFixed(4)} STT)`;
+  }
+
+  if (sameDestCount >= 2) {
+    summary += ` • repeat destination (${sameDestCount + 1}x total)`;
+  }
+  if (burstFlag) summary += burstFlag;
+
+  return summary;
+}
+
+function recommendedAction(riskScore: number, trusted: boolean, destination: string) {
+  const sameDest = recentIncidents.filter((r) => r.destination.toLowerCase() === destination.toLowerCase());
+  if (sameDest.length >= 2 && sameDest.every((r) => r.riskScore >= 80)) {
+    return "Repeated high-risk attempts — recommend permanent block or manual investigation";
+  }
+  if (riskScore >= 80) return "Reject or manually verify destination ownership";
+  if (riskScore >= 50 && trusted) return "Approve only if business context matches expected payout";
+  if (riskScore >= 50) return "Wait for ops confirmation";
+  return "Auto execution acceptable";
+}
+
 async function ensureSchemaRegistered() {
   const schemaIdResult = await streamsSdk.streams.computeSchemaId(SOMTINEL_STREAM_SCHEMA);
   if (schemaIdResult instanceof Error) {
@@ -92,25 +139,6 @@ async function ensureSchemaRegistered() {
   return schemaIdResult;
 }
 
-function makeSummary(riskScore: number, trusted: boolean, amount: bigint) {
-  if (riskScore >= 80) {
-    return `High risk withdrawal for ${amount} wei to ${trusted ? "trusted" : "unknown"} destination`;
-  }
-
-  if (riskScore >= 50) {
-    return `Elevated risk withdrawal exceeds trusted low-limit lane`;
-  }
-
-  return "Low risk withdrawal";
-}
-
-function recommendedAction(riskScore: number, trusted: boolean) {
-  if (riskScore >= 80) return "Reject or manually verify destination ownership";
-  if (riskScore >= 50 && trusted) return "Approve only if business context matches expected payout";
-  if (riskScore >= 50) return "Wait for ops confirmation";
-  return "Auto execution acceptable";
-}
-
 async function publishDigest(schemaId: `0x${string}`, incidentId: bigint, state: {
   target: `0x${string}`;
   amount: bigint;
@@ -120,8 +148,11 @@ async function publishDigest(schemaId: `0x${string}`, incidentId: bigint, state:
   trusted: boolean;
 }) {
   const statusText = incidentStatusLabel(state.status);
-  const summary = makeSummary(state.riskScore, state.trusted, state.amount);
-  const action = recommendedAction(state.riskScore, state.trusted);
+  const summary = makeSummary(state.riskScore, state.trusted, state.amount, state.target);
+  const action = recommendedAction(state.riskScore, state.trusted, state.target);
+
+  recentIncidents.push({ destination: state.target.toLowerCase(), riskScore: state.riskScore, timestamp: Date.now() });
+  if (recentIncidents.length > MAX_HISTORY) recentIncidents.shift();
 
   const encoded = encoder.encodeData([
     { name: "timestamp", type: "uint64", value: BigInt(Date.now()) },
@@ -136,17 +167,10 @@ async function publishDigest(schemaId: `0x${string}`, incidentId: bigint, state:
 
   const dataId = toHex(`incident-${incidentId.toString()}`, { size: 32 });
   const txHash = await streamsSdk.streams.set([
-    {
-      id: dataId,
-      schemaId,
-      data: encoded,
-    },
+    { id: dataId, schemaId, data: encoded },
   ]);
 
-  if (txHash instanceof Error) {
-    throw txHash;
-  }
-
+  if (txHash instanceof Error) throw txHash;
   await publicHttpClient.waitForTransactionReceipt({ hash: txHash });
   console.log(`[agent] published digest for incident ${incidentId.toString()} -> ${txHash}`);
 }

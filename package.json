@@ -9,10 +9,12 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "agent": "tsx scripts/agent.ts",
+    "mcp": "tsx scripts/mcp-server.ts",
     "configure": "tsx scripts/configureSomtinel.ts",
     "check": "npm run build && forge test"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@somnia-chain/reactivity": "0.1.5",
     "@somnia-chain/streams": "0.12.2",
     "buffer": "^6.0.3",
